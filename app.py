@@ -1,7 +1,9 @@
-import pandas as pd
+"""Streamlit 엔트리포인트 — CSV 업로드부터 프로파일링 결과 표시까지의 전체 UI 흐름을 구성한다."""
+
 import streamlit as st
 
 from src.data_loader import CANDIDATE_ENCODINGS, detect_encoding, load_csv, preview_lines
+from src.profiler import categorical_summary, column_profile, dataset_overview, numeric_summary
 
 st.set_page_config(page_title="KAMP EDA GUI", layout="wide")
 st.title("KAMP 제조 CSV 기초 분석 GUI")
@@ -34,20 +36,25 @@ else:
         st.error(f"CSV를 읽는 중 오류가 발생했습니다: {e}")
         st.stop()
 
-    st.subheader("기본 데이터 정보")
+    st.subheader("데이터 개요")
     st.caption(f"파일명: {uploaded_file.name}")
+    overview = dataset_overview(df)
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("행 수", f"{overview['행 수']:,}")
+    col2.metric("열 수", f"{overview['열 수']:,}")
+    col3.metric("메모리 사용량", f"{overview['메모리 사용량(MB)']:.2f} MB")
+    col4.metric("중복행 수", f"{overview['중복행 수']:,}")
 
-    col1, col2, col3 = st.columns(3)
-    col1.metric("행 수", f"{df.shape[0]:,}")
-    col2.metric("열 수", f"{df.shape[1]:,}")
-    memory_mb = df.memory_usage(deep=True).sum() / (1024**2)
-    col3.metric("메모리 사용량", f"{memory_mb:.2f} MB")
+    st.subheader("컬럼 프로파일")
+    st.dataframe(column_profile(df), use_container_width=True)
 
-    st.subheader("컬럼 목록 / dtype")
-    dtype_table = pd.DataFrame(
-        {
-            "컬럼명": df.columns.astype(str),
-            "dtype": df.dtypes.astype(str).values,
-        }
-    )
-    st.dataframe(dtype_table, use_container_width=True)
+    st.subheader("기술통계")
+    numeric_stats = numeric_summary(df)
+    if not numeric_stats.empty:
+        st.caption("수치형 컬럼")
+        st.dataframe(numeric_stats, use_container_width=True)
+
+    categorical_stats = categorical_summary(df)
+    if not categorical_stats.empty:
+        st.caption("범주형 컬럼")
+        st.dataframe(categorical_stats, use_container_width=True)
