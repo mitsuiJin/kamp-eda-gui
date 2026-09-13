@@ -26,6 +26,16 @@ st.set_page_config(page_title="KAMP EDA GUI", layout="wide")
 st.title("KAMP 제조 CSV 기초 분석 GUI")
 st.caption("설계 명세: docs/eda_gui_spec.md")
 
+
+@st.cache_data
+def _load_csv_cached(raw_bytes: bytes, encoding: str, header_row: int | None) -> pd.DataFrame:
+    return load_csv(raw_bytes, encoding, header_row)
+
+
+@st.cache_data
+def _profile_cached(df: pd.DataFrame):
+    return dataset_overview(df), column_profile(df), numeric_summary(df), categorical_summary(df)
+
 uploaded_file = st.file_uploader("CSV 파일 업로드", type=["csv"])
 
 if uploaded_file is None:
@@ -48,14 +58,15 @@ else:
         header_row = st.number_input("헤더로 사용할 행 번호 (1부터 시작)", min_value=1, value=1, step=1) - 1
 
     try:
-        df = load_csv(raw_bytes, encoding, header_row)
+        df = _load_csv_cached(raw_bytes, encoding, header_row)
     except Exception as e:
         st.error(f"CSV를 읽는 중 오류가 발생했습니다: {e}")
         st.stop()
 
+    overview, profile, numeric_stats, categorical_stats = _profile_cached(df)
+
     st.subheader("데이터 개요")
     st.caption(f"파일명: {uploaded_file.name}")
-    overview = dataset_overview(df)
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("행 수", f"{overview['행 수']:,}")
     col2.metric("열 수", f"{overview['열 수']:,}")
@@ -63,15 +74,13 @@ else:
     col4.metric("중복행 수", f"{overview['중복행 수']:,}")
 
     st.subheader("컬럼 프로파일")
-    st.dataframe(column_profile(df), use_container_width=True)
+    st.dataframe(profile, use_container_width=True)
 
     st.subheader("기술통계")
-    numeric_stats = numeric_summary(df)
     if not numeric_stats.empty:
         st.caption("수치형 컬럼")
         st.dataframe(numeric_stats, use_container_width=True)
 
-    categorical_stats = categorical_summary(df)
     if not categorical_stats.empty:
         st.caption("범주형 컬럼")
         st.dataframe(categorical_stats, use_container_width=True)
