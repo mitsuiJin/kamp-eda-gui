@@ -4,10 +4,19 @@ import pandas as pd
 import streamlit as st
 
 from src.analyses.distribution import numeric_column_stats
+from src.analyses.group_comparison import group_counts, group_numeric_summary
 from src.analyses.relationship import correlation_matrix
 from src.data_loader import CANDIDATE_ENCODINGS, detect_encoding, load_csv, preview_lines
 from src.profiler import categorical_summary, column_profile, dataset_overview, numeric_summary
-from src.visualization.charts import bar_chart, boxplot, correlation_heatmap, histogram, scatter_plot
+from src.visualization.charts import (
+    bar_chart,
+    boxplot,
+    correlation_heatmap,
+    grouped_boxplot,
+    grouped_histogram,
+    histogram,
+    scatter_plot,
+)
 
 st.set_page_config(page_title="KAMP EDA GUI", layout="wide")
 st.title("KAMP 제조 CSV 기초 분석 GUI")
@@ -67,7 +76,7 @@ else:
     st.subheader("분석 목적")
     analysis_purpose = st.radio(
         "분석 목적을 선택하세요",
-        ["변수 분포 확인", "변수 간 관계 확인"],
+        ["변수 분포 확인", "변수 간 관계 확인", "그룹별 비교"],
         horizontal=True,
     )
 
@@ -105,3 +114,40 @@ else:
                     "Y축 변수", selected_columns, index=1 if len(selected_columns) > 1 else 0
                 )
                 st.plotly_chart(scatter_plot(df, x_col, y_col, title=f"{x_col} vs {y_col}"), use_container_width=True)
+
+    elif analysis_purpose == "그룹별 비교":
+        group_column = st.selectbox("그룹으로 사용할 컬럼을 선택하세요", df.columns.astype(str))
+
+        st.caption("그룹별 count / 비율")
+        st.dataframe(group_counts(df, group_column), use_container_width=True)
+
+        numeric_columns = [
+            c for c in df.select_dtypes(include="number").columns.astype(str) if c != group_column
+        ]
+        if not numeric_columns:
+            st.warning("비교할 수치형 변수가 없습니다.")
+        else:
+            analysis_variables = st.multiselect(
+                "비교할 수치형 변수를 선택하세요",
+                numeric_columns,
+                default=numeric_columns[:1],
+            )
+            if not analysis_variables:
+                st.info("비교할 변수를 1개 이상 선택해주세요.")
+            else:
+                st.caption("그룹별 mean / std")
+                st.dataframe(
+                    group_numeric_summary(df, group_column, analysis_variables),
+                    use_container_width=True,
+                )
+
+                for variable in analysis_variables:
+                    chart_col1, chart_col2 = st.columns(2)
+                    chart_col1.plotly_chart(
+                        grouped_boxplot(df, group_column, variable, title=f"{group_column}별 {variable} 박스플롯"),
+                        use_container_width=True,
+                    )
+                    chart_col2.plotly_chart(
+                        grouped_histogram(df, group_column, variable, title=f"{group_column}별 {variable} 히스토그램"),
+                        use_container_width=True,
+                    )

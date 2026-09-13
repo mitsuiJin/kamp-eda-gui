@@ -36,3 +36,18 @@ def correlation_heatmap(corr: pd.DataFrame, title: str | None = None) -> go.Figu
 
 def scatter_plot(df: pd.DataFrame, x: str, y: str, title: str | None = None) -> go.Figure:
     return px.scatter(df, x=x, y=y, title=title)
+
+
+def grouped_boxplot(df: pd.DataFrame, group_column: str, value_column: str, title: str | None = None) -> go.Figure:
+    return px.box(df, x=group_column, y=value_column, title=title)
+
+
+def grouped_histogram(df: pd.DataFrame, group_column: str, value_column: str, title: str | None = None) -> go.Figure:
+    return px.histogram(
+        df,
+        x=value_column,
+        color=group_column,
+        barmode="overlay",
+        opacity=0.6,
+        title=title,
+    )

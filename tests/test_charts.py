@@ -3,7 +3,15 @@
 import pandas as pd
 import plotly.graph_objects as go
 
-from src.visualization.charts import bar_chart, boxplot, correlation_heatmap, histogram, scatter_plot
+from src.visualization.charts import (
+    bar_chart,
+    boxplot,
+    correlation_heatmap,
+    grouped_boxplot,
+    grouped_histogram,
+    histogram,
+    scatter_plot,
+)
 
 
 def test_histogram_returns_figure():
@@ -29,3 +37,13 @@ def test_correlation_heatmap_returns_figure():
 def test_scatter_plot_returns_figure():
     df = pd.DataFrame({"a": [1, 2, 3], "b": [3, 2, 1]})
     assert isinstance(scatter_plot(df, "a", "b"), go.Figure)
+
+
+def test_grouped_boxplot_returns_figure():
+    df = pd.DataFrame({"grp": ["A", "A", "B"], "val": [1, 2, 3]})
+    assert isinstance(grouped_boxplot(df, "grp", "val"), go.Figure)
+
+
+def test_grouped_histogram_returns_figure():
+    df = pd.DataFrame({"grp": ["A", "A", "B"], "val": [1, 2, 3]})
+    assert isinstance(grouped_histogram(df, "grp", "val"), go.Figure)
