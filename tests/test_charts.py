@@ -10,6 +10,7 @@ from src.visualization.charts import (
     grouped_boxplot,
     grouped_histogram,
     histogram,
+    outlier_scatter_over_time,
     scatter_plot,
     time_series_line,
 )
@@ -59,3 +60,9 @@ def test_time_series_line_with_rolling_window_adds_extra_trace():
     df = pd.DataFrame({"t": pd.to_datetime(["2020-01-01", "2020-01-02", "2020-01-03"]), "v": [1, 2, 3]})
     fig = time_series_line(df, "t", "v", rolling_window=2)
     assert len(fig.data) == 2
+
+
+def test_outlier_scatter_over_time_returns_figure():
+    df = pd.DataFrame({"t": pd.to_datetime(["2020-01-01", "2020-01-02", "2020-01-03"]), "v": [1, 2, 100]})
+    mask = pd.Series([False, False, True])
+    assert isinstance(outlier_scatter_over_time(df, "t", "v", mask), go.Figure)

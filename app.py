@@ -5,6 +5,7 @@ import streamlit as st
 
 from src.analyses.distribution import numeric_column_stats
 from src.analyses.group_comparison import group_counts, group_numeric_summary
+from src.analyses.outlier import outlier_mask, outlier_summary
 from src.analyses.relationship import correlation_matrix
 from src.analyses.time_series import datetime_parseable_columns, sort_by_time
 from src.data_loader import CANDIDATE_ENCODINGS, detect_encoding, load_csv, preview_lines
@@ -16,6 +17,7 @@ from src.visualization.charts import (
     grouped_boxplot,
     grouped_histogram,
     histogram,
+    outlier_scatter_over_time,
     scatter_plot,
     time_series_line,
 )
@@ -78,7 +80,7 @@ else:
     st.subheader("분석 목적")
     analysis_purpose = st.radio(
         "분석 목적을 선택하세요",
-        ["변수 분포 확인", "변수 간 관계 확인", "그룹별 비교", "시간에 따른 변화 확인"],
+        ["변수 분포 확인", "변수 간 관계 확인", "그룹별 비교", "시간에 따른 변화 확인", "통계적 이상치 탐색"],
         horizontal=True,
     )
 
@@ -187,3 +189,33 @@ else:
             missing_count = int(sorted_df[value_column].isna().sum())
             if missing_count > 0:
                 st.caption(f"{value_column} 결측 {missing_count}건 — 위 그래프에서 선이 끊긴 구간이 결측 위치입니다.")
+
+    elif analysis_purpose == "통계적 이상치 탐색":
+        numeric_columns = df.select_dtypes(include="number").columns.astype(str).tolist()
+        if not numeric_columns:
+            st.warning("이상치를 확인할 수치형 변수가 없습니다.")
+        else:
+            column = st.selectbox("이상치를 확인할 컬럼을 선택하세요", numeric_columns)
+            series = df[column]
+
+            st.dataframe(pd.DataFrame([outlier_summary(series)]), use_container_width=True)
+            st.plotly_chart(boxplot(series, title=f"{column} 박스플롯 (이상치 표시)"), use_container_width=True)
+            st.warning("IQR 기준의 통계적 이상치이며, 제조공정의 실제 이상 또는 설비 고장을 의미하지 않습니다.")
+
+            time_candidates = datetime_parseable_columns(df)
+            if time_candidates:
+                show_time_view = st.checkbox("시간축 기준 이상치 위치 표시")
+                if show_time_view:
+                    time_column = st.selectbox(
+                        "시간축으로 사용할 컬럼을 선택하세요",
+                        time_candidates,
+                        key="outlier_time_column",
+                    )
+                    sorted_df = sort_by_time(df, time_column, column)
+                    mask = outlier_mask(sorted_df[column])
+                    st.plotly_chart(
+                        outlier_scatter_over_time(
+                            sorted_df, time_column, column, mask, title=f"{column} 이상치 위치 ({time_column} 기준)"
+                        ),
+                        use_container_width=True,
+                    )

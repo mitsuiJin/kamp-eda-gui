@@ -53,6 +53,17 @@ def grouped_histogram(df: pd.DataFrame, group_column: str, value_column: str, ti
     )
 
 
+def outlier_scatter_over_time(
+    df: pd.DataFrame,
+    time_column: str,
+    value_column: str,
+    mask: pd.Series,
+    title: str | None = None,
+) -> go.Figure:
+    labels = mask.map({True: "이상치", False: "정상"})
+    return px.scatter(df, x=time_column, y=value_column, color=labels, title=title)
+
+
 def time_series_line(
     df: pd.DataFrame,
     time_column: str,
