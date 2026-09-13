@@ -1,3 +1,5 @@
+"""CSV 인코딩 감지, 헤더 행 처리, 데이터 로드를 담당하는 모듈."""
+
 import io
 
 import pandas as pd

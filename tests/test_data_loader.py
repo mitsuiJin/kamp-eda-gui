@@ -1,3 +1,5 @@
+"""data_loader의 인코딩 폴백/헤더 처리 로직에 대한 단위 테스트."""
+
 import pytest
 
 from src.data_loader import detect_encoding, load_csv, preview_lines
