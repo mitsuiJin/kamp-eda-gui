@@ -51,3 +51,17 @@ def grouped_histogram(df: pd.DataFrame, group_column: str, value_column: str, ti
         opacity=0.6,
         title=title,
     )
+
+
+def time_series_line(
+    df: pd.DataFrame,
+    time_column: str,
+    value_column: str,
+    rolling_window: int | None = None,
+    title: str | None = None,
+) -> go.Figure:
+    fig = px.line(df, x=time_column, y=value_column, title=title)
+    if rolling_window and rolling_window > 1:
+        rolling = df[value_column].rolling(rolling_window, min_periods=1).mean()
+        fig.add_scatter(x=df[time_column], y=rolling, mode="lines", name=f"rolling mean ({rolling_window})")
+    return fig
