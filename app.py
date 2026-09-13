@@ -4,9 +4,10 @@ import pandas as pd
 import streamlit as st
 
 from src.analyses.distribution import numeric_column_stats
+from src.analyses.relationship import correlation_matrix
 from src.data_loader import CANDIDATE_ENCODINGS, detect_encoding, load_csv, preview_lines
 from src.profiler import categorical_summary, column_profile, dataset_overview, numeric_summary
-from src.visualization.charts import bar_chart, boxplot, histogram
+from src.visualization.charts import bar_chart, boxplot, correlation_heatmap, histogram, scatter_plot
 
 st.set_page_config(page_title="KAMP EDA GUI", layout="wide")
 st.title("KAMP 제조 CSV 기초 분석 GUI")
@@ -64,7 +65,11 @@ else:
 
     st.divider()
     st.subheader("분석 목적")
-    analysis_purpose = st.radio("분석 목적을 선택하세요", ["변수 분포 확인"], horizontal=True)
+    analysis_purpose = st.radio(
+        "분석 목적을 선택하세요",
+        ["변수 분포 확인", "변수 간 관계 확인"],
+        horizontal=True,
+    )
 
     if analysis_purpose == "변수 분포 확인":
         column = st.selectbox("분석할 컬럼을 선택하세요", df.columns.astype(str))
@@ -77,3 +82,26 @@ else:
             chart_col2.plotly_chart(boxplot(series, title=f"{column} 박스플롯"), use_container_width=True)
         else:
             st.plotly_chart(bar_chart(series, title=f"{column} 빈도"), use_container_width=True)
+
+    elif analysis_purpose == "변수 간 관계 확인":
+        numeric_columns = df.select_dtypes(include="number").columns.astype(str).tolist()
+        if len(numeric_columns) < 2:
+            st.warning("수치형 변수가 2개 미만이라 변수 간 관계를 확인할 수 없습니다.")
+        else:
+            selected_columns = st.multiselect(
+                "상관관계를 확인할 수치형 변수를 선택하세요",
+                numeric_columns,
+                default=numeric_columns,
+            )
+            if len(selected_columns) < 2:
+                st.info("2개 이상의 변수를 선택해주세요.")
+            else:
+                corr = correlation_matrix(df, selected_columns)
+                st.plotly_chart(correlation_heatmap(corr, title="상관관계 히트맵"), use_container_width=True)
+
+                scatter_col1, scatter_col2 = st.columns(2)
+                x_col = scatter_col1.selectbox("X축 변수", selected_columns, index=0)
+                y_col = scatter_col2.selectbox(
+                    "Y축 변수", selected_columns, index=1 if len(selected_columns) > 1 else 0
+                )
+                st.plotly_chart(scatter_plot(df, x_col, y_col, title=f"{x_col} vs {y_col}"), use_container_width=True)

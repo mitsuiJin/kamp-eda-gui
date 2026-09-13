@@ -21,3 +21,18 @@ def bar_chart(series: pd.Series, title: str | None = None) -> go.Figure:
         title=title,
         labels={"x": series.name, "y": "count"},
     )
+
+
+def correlation_heatmap(corr: pd.DataFrame, title: str | None = None) -> go.Figure:
+    return px.imshow(
+        corr,
+        text_auto=".2f",
+        color_continuous_scale="RdBu_r",
+        zmin=-1,
+        zmax=1,
+        title=title,
+    )
+
+
+def scatter_plot(df: pd.DataFrame, x: str, y: str, title: str | None = None) -> go.Figure:
+    return px.scatter(df, x=x, y=y, title=title)
