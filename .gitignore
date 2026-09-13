@@ -1,6 +1,10 @@
 # KAMP raw datasets (huge, not source code — see docs/eda_gui_spec.md)
 dataset/
 
+# Team research docs — kept local only, not in this repo
+notion/
+reports/
+
 # Python
 __pycache__/
 *.pyc
