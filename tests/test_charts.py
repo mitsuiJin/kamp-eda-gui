@@ -11,6 +11,7 @@ from src.visualization.charts import (
     grouped_histogram,
     histogram,
     scatter_plot,
+    time_series_line,
 )
 
 
@@ -47,3 +48,14 @@ def test_grouped_boxplot_returns_figure():
 def test_grouped_histogram_returns_figure():
     df = pd.DataFrame({"grp": ["A", "A", "B"], "val": [1, 2, 3]})
     assert isinstance(grouped_histogram(df, "grp", "val"), go.Figure)
+
+
+def test_time_series_line_returns_figure():
+    df = pd.DataFrame({"t": pd.to_datetime(["2020-01-01", "2020-01-02"]), "v": [1, 2]})
+    assert isinstance(time_series_line(df, "t", "v"), go.Figure)
+
+
+def test_time_series_line_with_rolling_window_adds_extra_trace():
+    df = pd.DataFrame({"t": pd.to_datetime(["2020-01-01", "2020-01-02", "2020-01-03"]), "v": [1, 2, 3]})
+    fig = time_series_line(df, "t", "v", rolling_window=2)
+    assert len(fig.data) == 2
