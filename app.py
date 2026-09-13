@@ -1,9 +1,12 @@
-"""Streamlit 엔트리포인트 — CSV 업로드부터 프로파일링 결과 표시까지의 전체 UI 흐름을 구성한다."""
+"""Streamlit 엔트리포인트 — CSV 업로드부터 분석 결과 표시까지의 전체 UI 흐름을 구성한다."""
 
+import pandas as pd
 import streamlit as st
 
+from src.analyses.distribution import numeric_column_stats
 from src.data_loader import CANDIDATE_ENCODINGS, detect_encoding, load_csv, preview_lines
 from src.profiler import categorical_summary, column_profile, dataset_overview, numeric_summary
+from src.visualization.charts import bar_chart, boxplot, histogram
 
 st.set_page_config(page_title="KAMP EDA GUI", layout="wide")
 st.title("KAMP 제조 CSV 기초 분석 GUI")
@@ -58,3 +61,19 @@ else:
     if not categorical_stats.empty:
         st.caption("범주형 컬럼")
         st.dataframe(categorical_stats, use_container_width=True)
+
+    st.divider()
+    st.subheader("분석 목적")
+    analysis_purpose = st.radio("분석 목적을 선택하세요", ["변수 분포 확인"], horizontal=True)
+
+    if analysis_purpose == "변수 분포 확인":
+        column = st.selectbox("분석할 컬럼을 선택하세요", df.columns.astype(str))
+        series = df[column]
+
+        if pd.api.types.is_numeric_dtype(series):
+            st.dataframe(pd.DataFrame([numeric_column_stats(series)]), use_container_width=True)
+            chart_col1, chart_col2 = st.columns(2)
+            chart_col1.plotly_chart(histogram(series, title=f"{column} 히스토그램"), use_container_width=True)
+            chart_col2.plotly_chart(boxplot(series, title=f"{column} 박스플롯"), use_container_width=True)
+        else:
+            st.plotly_chart(bar_chart(series, title=f"{column} 빈도"), use_container_width=True)
