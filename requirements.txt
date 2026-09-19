@@ -1,6 +1,10 @@
 pandas==3.0.5
 numpy==2.5.3
-streamlit==1.63.0
-plotly==7.0.0
 scipy==1.18.1
 pytest==9.1.1
+scikit-learn==1.9.1
+matplotlib==3.11.2
+reportlab==5.0.1
+mlxtend==0.25.0
+tabulate==0.10.0
+pymupdf==1.28.2

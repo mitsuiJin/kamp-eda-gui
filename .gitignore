@@ -1,6 +1,9 @@
 # KAMP raw datasets (huge, not source code — see docs/eda_gui_spec.md)
 dataset/
 
+# eda_report CLI run outputs (generated PDFs/figures/JSON, not source code)
+outputs/
+
 # Team research docs — kept local only, not in this repo
 notion/
 reports/
