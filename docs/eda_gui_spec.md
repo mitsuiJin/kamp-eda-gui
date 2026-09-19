@@ -1,3 +1,5 @@
+> **[보관됨]** 이 문서가 설명하는 Streamlit GUI 도구는 폐기되었고 코드는 [`archive/streamlit_gui/`](../archive/streamlit_gui/)로 옮겨졌습니다. 현재 진행 중인 모듈은 [`eda_auto_report_design.md`](eda_auto_report_design.md) · [`eda_auto_report_architecture.md`](eda_auto_report_architecture.md)를 참고하세요. 아래 내용은 과거 설계 기록으로만 유지합니다.
+
 # KAMP 제조 CSV 기초 분석 GUI 도구 — 설계 명세 (v2)
 
 > KAMP 2026 제6회 K-AI 제조데이터 분석 경진대회 준비 과제(① 50개 데이터셋으로 제조 도메인 이해, ② 우리만의 데이터분석 프로세스 정의)의 실행 도구로 개발한다.
