@@ -52,22 +52,9 @@ def decide_analyses(profile: DatasetProfile, run_config: RunConfig) -> list[Anal
     else:
         decisions += [_ok("descriptive"), _ok("distribution_numeric"), _ok("outlier_iqr")]
 
-    if len(numeric) < t.multivariate_outlier_min_numeric:
-        decisions.append(
-            _na("outlier_multivariate",
-                f"수치형 변수 {len(numeric)}개 — 변수 조합 기준 이상치 분석에는 {t.multivariate_outlier_min_numeric}개 이상 필요")
-        )
-    elif n_rows < t.multivariate_outlier_min_rows:
-        decisions.append(
-            _na("outlier_multivariate",
-                f"행 {n_rows:,}개 — 밀도 추정이 불안정해 {t.multivariate_outlier_min_rows:,}행 미만에서는 수행하지 않음")
-        )
-    else:
-        decisions.append(_ok("outlier_multivariate"))
-
     decisions.append(
         _ok("distribution_categorical") if categorical
-        else _na("distribution_categorical", "Dataset Guidebook/데이터에서 확인된 범주형 변수가 없음")
+        else _na("distribution_categorical", "데이터에서 확인된 범주형 변수가 없음")
     )
 
     if len(numeric) >= t.correlation_min_numeric:
@@ -88,61 +75,21 @@ def decide_analyses(profile: DatasetProfile, run_config: RunConfig) -> list[Anal
     else:
         decisions.append(_na("cat_categorical", f"범주형 변수 {len(categorical)}개 — 교차 분석에는 2개 이상 필요"))
 
-    decisions.append(_decide_association(profile, t))
-
-    if len(numeric) >= t.pca_min_numeric:
-        decisions.append(_ok("pca"))
-    else:
-        decisions.append(_na("pca", f"수치형 변수 {len(numeric)}개 — 차원 축약에는 {t.pca_min_numeric}개 이상 필요"))
-
-    if len(numeric) < t.clustering_min_numeric:
-        decisions.append(_na("clustering", f"수치형 변수 {len(numeric)}개 — 군집분석에는 {t.clustering_min_numeric}개 이상 필요"))
-    elif n_rows < t.clustering_min_rows:
-        decisions.append(_na("clustering", f"행 {n_rows:,}개 — 군집분석에는 {t.clustering_min_rows:,}행 이상 필요"))
-    else:
-        decisions.append(_ok("clustering"))
-
     decisions.append(_decide_timeseries(profile, t))
     decisions.append(_decide_target(profile))
     return decisions
 
 
-def _decide_association(profile: DatasetProfile, t: AnalysisThresholds) -> AnalysisDecision:
-    usable = [
-        p.name for p in profile.columns
-        if p.role == "categorical" and p.name in profile.categorical_columns
-        and p.n_unique <= t.association_max_cardinality
-    ]
-    if len(usable) < 2:
-        return _na(
-            "association",
-            f"고유값 {t.association_max_cardinality}개 이하인 범주형 변수가 {len(usable)}개 — 연관규칙에는 2개 이상 필요",
-        )
-    combinations = 1
-    for name in usable:
-        combinations *= max(profile.column(name).n_unique, 1)
-    if combinations > t.association_max_combinations:
-        return _skip(
-            "association",
-            f"범주 조합 수가 약 {combinations:,}개로 {t.association_max_combinations:,}개를 초과 — 조합 폭발로 수행하지 않음",
-        )
-    return _ok("association", columns=usable, combinations=combinations)
-
-
 def _decide_timeseries(profile: DatasetProfile, t: AnalysisThresholds) -> AnalysisDecision:
-    declared = None
-    if profile.validation and profile.validation.datetime_status:
-        declared = profile.validation.datetime_status.get("usable")
-    column = declared or profile.datetime_column
+    column = profile.datetime_column
     if column is None:
-        return _na("timeseries", "Dataset Guidebook과 데이터 어디에서도 시간 변수를 확인하지 못함")
+        return _na("timeseries", "데이터에서 시간 변수를 확인하지 못함")
     if profile.n_rows < t.min_rows_for_analysis:
         return _na("timeseries", f"행 {profile.n_rows:,}개 — 추세를 보기에 표본이 부족함")
-    source = "Dataset Guidebook 지정" if declared else "데이터에서 날짜 파싱 확인"
-    return _ok("timeseries", datetime_column=column, datetime_source=source)
+    return _ok("timeseries", datetime_column=column, datetime_source="데이터에서 날짜 파싱 확인")
 
 
 def _decide_target(profile: DatasetProfile) -> AnalysisDecision:
     if not profile.target_columns:
-        return _na("target", "Dataset Guidebook/실행 옵션에서 target이 지정되지 않음(EDA가 target을 추측하지 않음)")
+        return _na("target", "실행 옵션(--target)에서 target이 지정되지 않음(EDA가 target을 추측하지 않음)")
     return _ok("target", target_columns=profile.target_columns)

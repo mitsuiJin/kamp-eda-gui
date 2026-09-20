@@ -1,8 +1,7 @@
 """AI Agent Context용 JSON 출력.
 
-PDF에는 담지 않는 상세 수치(전체 상관행렬, PCA loading, 이상치 인덱스, 전체 범주 빈도 등)와
-분석 상태·사유·파라미터를 모두 포함한다. Dataset Guidebook Context(도메인 설명)와 EDA Context(관찰
-사실)를 분리해 담아, 후속 AI Agent가 둘을 구분해 사용할 수 있게 한다.
+PDF에는 담지 않는 상세 수치(전체 상관행렬, 이상치 인덱스, 전체 범주 빈도 등)와 분석
+상태·사유·파라미터를 모두 포함한다.
 """
 
 from __future__ import annotations
@@ -32,7 +31,7 @@ def _default(obj: Any):
     return str(obj)
 
 
-def render(results: list[AnalysisResult], output_dir: str, profile=None, run_config=None) -> str:
+def render(results: list[AnalysisResult], output_dir: str, profile=None, run_config=None, column_glossary=None) -> str:
     analyses = [
         {
             "section_id": r.section_id,
@@ -62,8 +61,6 @@ def render(results: list[AnalysisResult], output_dir: str, profile=None, run_con
     }
 
     if profile is not None:
-        metadata = profile.metadata
-        validation = profile.validation
         payload["dataset"] = {
             "n_rows": profile.n_rows,
             "n_cols": profile.n_cols,
@@ -74,27 +71,14 @@ def render(results: list[AnalysisResult], output_dir: str, profile=None, run_con
             "excluded_columns": profile.excluded_columns,
             "target_columns": profile.target_columns,
             "column_profiles": [c.to_dict() for c in profile.columns],
+            "column_descriptions": column_glossary or {},
         }
-        payload["dataset_guidebook"] = {
-            "source": metadata.source if metadata else "none",
-            "dataset_name": metadata.dataset_name if metadata else None,
-            "process": metadata.process if metadata else None,
-            "columns": [c.to_dict() for c in metadata.columns] if metadata else [],
-            "target_columns": metadata.target_columns if metadata else [],
-            "datetime_column": metadata.datetime_column if metadata else None,
-            "sampling_interval": metadata.sampling_interval if metadata else None,
-            "collection_period": metadata.collection_period if metadata else None,
-            # 도메인 문맥은 EDA가 사용하지 않고 AI Agent 해석용으로만 보존한다.
-            "domain_context": metadata.domain_context if metadata else {},
-        }
-        payload["metadata_validation"] = validation.to_dict() if validation else None
 
     if run_config is not None:
         payload["run_config"] = {
             "input_path": run_config.input_path,
-            "metadata_path": run_config.metadata_path,
-            "guideline_pdf_path": run_config.guideline_pdf_path,
             "target_columns": run_config.target_columns,
+            "column_glossary_path": run_config.column_glossary_path,
             "thresholds": run_config.thresholds.to_dict(),
         }
 

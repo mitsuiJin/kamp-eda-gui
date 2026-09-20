@@ -57,10 +57,10 @@ def run(df: pd.DataFrame, profile: DatasetProfile, params: dict) -> AnalysisResu
         section_id="03_missing",
         title="Missing Values (결측치)",
         purpose=(
-            "변수별 결측 비율과, 여러 변수가 같은 행에서 함께 결측되는 패턴이 있는지 확인합니다. "
-            "결측이 발생한 원인은 데이터만으로 확정할 수 없으므로 관찰된 패턴만 제시합니다."
+            "결측치는 값이 기록되지 않은 데이터입니다. 변수별 결측 비율과, 여러 변수가 같은 행에서 "
+            "함께 결측되는 패턴이 있는지 확인해 수집 단계의 문제를 짐작하는 데 참고할 수 있습니다."
         ),
-        rationale="결측 위치가 완전히 동일한 컬럼 그룹은 수집 단계가 같을 가능성을 시사하지만, 원인은 Dataset Guidebook이나 현장 확인이 필요합니다.",
+        rationale="결측 위치가 완전히 동일한 컬럼은 수집 단계가 같을 가능성이 있으나, 원인은 현장 확인이 필요합니다.",
         input_columns=list(missing_rate.index),
         tables=[round_floats(table)],
         findings=findings,

@@ -2,9 +2,8 @@ pandas==3.0.5
 numpy==2.5.3
 scipy==1.18.1
 pytest==9.1.1
-scikit-learn==1.9.1
 matplotlib==3.11.2
 reportlab==5.0.1
-mlxtend==0.25.0
 tabulate==0.10.0
-pymupdf==1.28.2
+pymupdf==1.28.2  # eda_report.column_glossary(컬럼 설명 초안 추출)에서만 필요, 파이프라인 실행엔 불필요
+customtkinter==6.0.0  # eda_report.gui(로컬 데스크톱 GUI)에서만 필요, CLI 실행엔 불필요

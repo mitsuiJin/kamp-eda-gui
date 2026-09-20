@@ -27,18 +27,14 @@ def run(df: pd.DataFrame, profile: DatasetProfile, params: dict) -> AnalysisResu
         role_counts[label] = role_counts.get(label, 0) + 1
 
     duplicates = int(df.duplicated().sum())
-    metadata = profile.metadata
     overview_table = pd.DataFrame(
         {
-            "항목": ["행 수", "열 수", "중복행 수", "메모리 사용량(MB)", "Dataset Guidebook 메타데이터"],
+            "항목": ["행 수", "열 수", "중복행 수", "메모리 사용량(MB)"],
             "값": [
                 f"{profile.n_rows:,}",
                 f"{profile.n_cols:,}",
                 f"{duplicates:,}",
                 f"{df.memory_usage(deep=True).sum() / (1024 * 1024):.2f}",
-                {"none": "없음", "json": "JSON으로 제공됨", "pdf_draft_unverified": "PDF 초안(00_manifest에서 검증 결과 확인)"}.get(
-                    metadata.source if metadata else "none", "없음"
-                ),
             ],
         }
     )
@@ -50,12 +46,11 @@ def run(df: pd.DataFrame, profile: DatasetProfile, params: dict) -> AnalysisResu
     return AnalysisResult(
         section_id="01_overview",
         title="Dataset Overview (데이터 개요)",
-        purpose="데이터의 행/열 규모, 변수 역할(analysis role) 구성, 중복행 수를 확인합니다.",
+        purpose="데이터의 전체 규모(행/열 수)와 변수 구성을 한눈에 확인합니다.",
         rationale=(
-            "role은 변수의 도메인 의미가 아니라 분석 대상 선정을 위한 구분입니다(numeric/categorical/"
-            "datetime/text/target, 그리고 값이 하나뿐인 constant·전부 결측인 empty). storage dtype이 "
-            "아니라 analysis role 기준 집계이므로, target으로 지정된 컬럼은 저장 형식과 무관하게 "
-            "target으로 별도 집계됩니다(PCA/Clustering 등 feature 입력에도 포함되지 않습니다)."
+            "role은 변수의 의미가 아니라 분석에서 어떻게 쓰이는지에 대한 구분입니다(수치형·범주형·"
+            "시간·텍스트·target, 상수·전체결측 제외). target으로 지정된 컬럼은 저장 형식과 무관하게 "
+            "별도로 집계됩니다."
         ),
         parameters={"duplicate_rows": duplicates},
         tables=[overview_table, role_table],

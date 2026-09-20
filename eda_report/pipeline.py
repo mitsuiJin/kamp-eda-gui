@@ -1,7 +1,8 @@
-"""전체 오케스트레이션: load → Dataset Guidebook metadata → validate → profile → decide → run → render.
+"""전체 오케스트레이션: load → profile → decide → run → render.
 
-설계 원칙: EDA는 Dataset Guidebook 메타데이터를 "받아서 검증"하고, 그 결과로 어떤 분석이
-성립하는지만 판정한다. 모든 분석은 실행 여부와 사유가 Manifest에 기록된다.
+설계 원칙: EDA는 데이터 자체(구조적 사실)만으로 어떤 분석이 성립하는지 판정한다. 변수의
+의미는 추론하지 않으며, target만 예외적으로 실행 옵션(`--target`)으로 명시된 경우에 한해
+반영한다. 모든 분석은 실행 여부와 사유가 Manifest에 기록된다.
 """
 
 from __future__ import annotations
@@ -10,13 +11,9 @@ import os
 import time
 import traceback
 
-import pandas as pd
-
 from eda_report.analyses import (
-    association,
     cat_categorical,
     cat_numeric,
-    clustering,
     column_profile_page,
     correlation,
     descriptive,
@@ -28,17 +25,14 @@ from eda_report.analyses import (
     missing,
     outlier,
     overview,
-    pca,
     relationship,
     target,
     timeseries,
 )
 from eda_report.analyses.base import AnalysisResult, failed
+from eda_report.column_glossary import load_column_glossary
 from eda_report.config import RunConfig
 from eda_report.io.loader import load_table
-from eda_report.metadata.pdf_extract import GuidelinePdfError, extract_guideline_metadata
-from eda_report.metadata.schema import DatasetMetadata
-from eda_report.metadata.validator import MetadataValidationReport, validate_metadata
 from eda_report.profiling.dataset_profile import build_dataset_profile
 from eda_report.selection.rules import AnalysisDecision, decide_analyses
 
@@ -50,14 +44,10 @@ ANALYSIS_REGISTRY = {
     "distribution_numeric": distribution_numeric.run,
     "distribution_categorical": distribution_categorical.run,
     "outlier_iqr": outlier.run_iqr,
-    "outlier_multivariate": outlier.run_multivariate,
     "correlation": correlation.run,
     "relationship": relationship.run,
     "cat_numeric": cat_numeric.run,
     "cat_categorical": cat_categorical.run,
-    "association": association.run,
-    "pca": pca.run,
-    "clustering": clustering.run,
     "target": target.run,
     "timeseries": timeseries.run,
 }
@@ -65,52 +55,24 @@ ANALYSIS_REGISTRY = {
 # 조건 미충족으로 실행되지 않은 분석도 리포트에 남기기 위한 표시 정보.
 SECTION_INFO = {
     "overview": ("01_overview", "Dataset Overview (데이터 개요)", "데이터의 행/열 규모와 변수 구성을 확인합니다."),
-    "column_profile": ("02_column_profile", "Column Profile (컬럼별 프로파일)", "변수별 상태와 Dataset Guidebook 검증 결과를 정리합니다."),
+    "column_profile": ("02_column_profile", "Column Profile (컬럼별 프로파일)", "변수별 dtype·결측률·고유값 수를 정리합니다."),
     "missing": ("03_missing", "Missing Values (결측치)", "변수별 결측 비율과 공통 결측 패턴을 확인합니다."),
     "descriptive": ("04_descriptive", "Descriptive Statistics (기술통계)", "수치형 변수의 기술통계를 산출합니다."),
     "distribution_numeric": ("05_numerical_distribution", "Numerical Distribution (수치형 변수 분포)", "수치형 변수의 분포 형태를 확인합니다."),
     "distribution_categorical": ("06_categorical_distribution", "Categorical Distribution (범주형 변수 분포)", "범주형 변수의 값별 빈도를 확인합니다."),
     "outlier_iqr": ("07_outlier_iqr", "Outlier Analysis - IQR (통계적 이상치, 변수 1개씩)", "IQR 기준 통계적 이상치를 집계합니다."),
-    "outlier_multivariate": ("07_outlier_multivariate", "Outlier Analysis - 변수 조합 기준 (다변량)", "변수 조합 기준 이상치를 집계합니다."),
     "correlation": ("08_correlation", "Correlation Analysis (상관관계 분석)", "변수 쌍의 상관계수를 산출합니다."),
     "relationship": ("09_relationship", "Feature Relationship (변수 쌍 산점도)", "선택된 변수 쌍의 분포를 확인합니다."),
     "cat_numeric": ("10_cat_numeric", "Categorical × Numerical (범주별 수치형 분포 비교)", "범주별 수치형 분포를 비교합니다."),
     "cat_categorical": ("11_cat_categorical", "Categorical × Categorical (범주형 간 교차 분석)", "범주형 변수 간 교차 분포를 확인합니다."),
-    "association": ("17_association", "Association Analysis (연관규칙)", "범주 값 조합의 동시 출현 패턴을 산출합니다."),
-    "pca": ("12_pca", "PCA (주성분분석)", "수치형 변수를 소수의 축으로 압축했을 때의 구조를 관찰합니다."),
-    "clustering": ("13_clustering", "Clustering (군집분석)", "수치형 변수 공간에서 관측치가 어떻게 묶이는지 관찰합니다."),
     "target": ("15_target", "Target Analysis (목표변수 분석)", "지정된 target과 다른 변수의 관계를 정리합니다."),
     "timeseries": ("16_time_series", "Time Series Analysis (시계열 관찰)", "시간에 따른 값의 변화를 관찰합니다."),
 }
 
-# Core EDA: 데이터 구조만으로 항상 시도되는 기초 분석. Advanced/Optional EDA: 통계적 모델을
-# 쓰거나(IsolationForest/PCA/KMeans) target·시간축처럼 조건부로만 성립하는 분석. "Advanced"는
-# 신뢰도가 낮다는 뜻이 아니라, 해석 시 알고리즘 선택/파라미터를 함께 감안해야 한다는 신호다.
-ADVANCED_SECTIONS = {
-    "outlier_multivariate", "pca", "clustering", "target", "timeseries", "association",
-}
-
-
-def _resolve_metadata(run_config: RunConfig, df: pd.DataFrame) -> tuple[DatasetMetadata, list[str]]:
-    """메타데이터 출처 우선순위: 사용자 제공 JSON > Dataset Guidebook PDF 초안 > 없음."""
-    notes: list[str] = []
-    if run_config.metadata_path:
-        metadata = DatasetMetadata.from_json_file(run_config.metadata_path)
-        notes.append(f"메타데이터 JSON 사용: {run_config.metadata_path}")
-        return metadata, notes
-
-    if run_config.guideline_pdf_path:
-        try:
-            metadata = extract_guideline_metadata(run_config.guideline_pdf_path, list(df.columns))
-            notes.append(
-                f"Dataset Guidebook PDF에서 초안 추출: {run_config.guideline_pdf_path} "
-                f"(컬럼 {len(metadata.columns)}개 매칭, 타입은 미확정 — 아래 검증 결과로 confirmed 여부 확인)"
-            )
-            return metadata, notes
-        except GuidelinePdfError as exc:
-            notes.append(f"Dataset Guidebook PDF 처리 실패 — 메타데이터 없이 진행: {exc}")
-
-    return DatasetMetadata.empty(), notes
+# Core EDA: 데이터 구조만으로 항상 시도되는 기초 분석. Advanced/Optional EDA: target·시간축처럼
+# 조건부로만 성립하는 분석. "Advanced"는 신뢰도가 낮다는 뜻이 아니라, 실행 조건이 데이터
+# 구조가 아니라 사용자 지정(target)이나 특정 변수 종류(시간축)에 달려 있다는 신호다.
+ADVANCED_SECTIONS = {"target", "timeseries"}
 
 
 def run(run_config: RunConfig) -> list[AnalysisResult]:
@@ -119,23 +81,23 @@ def run(run_config: RunConfig) -> list[AnalysisResult]:
     os.makedirs(fig_dir, exist_ok=True)
 
     df, parse_manifest = load_table(run_config.input_path)
-    metadata, metadata_notes = _resolve_metadata(run_config, df)
-    parse_manifest.warnings.extend(metadata_notes)
 
-    validation: MetadataValidationReport = validate_metadata(
-        metadata, df, datetime_min_rate=run_config.thresholds.datetime_parse_min_rate
-    )
-
-    # target은 추론하지 않는다: 실행 옵션 > Dataset Guidebook 순으로만 확정한다.
-    target_columns = list(run_config.target_columns or [])
-    if not target_columns and validation.target_status.get("usable"):
-        target_columns = list(validation.target_status["usable"])
-    target_columns = [t for t in target_columns if t in df.columns]
+    # target은 추론하지 않는다: 실행 옵션(--target)으로만 확정한다.
+    target_columns = [t for t in (run_config.target_columns or []) if t in df.columns]
 
     profile = build_dataset_profile(
-        df, parse_manifest, metadata=metadata, validation=validation,
-        thresholds=run_config.thresholds, target_columns=target_columns,
+        df, parse_manifest, thresholds=run_config.thresholds, target_columns=target_columns,
     )
+
+    # 컬럼 설명(사람이 검수한 표시용 텍스트)은 있으면 불러오되, 실행 흐름에는 영향을 주지
+    # 않는다 — role/target/시간축 판정은 이미 위에서 데이터만으로 끝났다.
+    column_glossary: dict[str, str] = {}
+    if run_config.column_glossary_path:
+        column_glossary = load_column_glossary(run_config.column_glossary_path)
+        parse_manifest.warnings.append(
+            f"컬럼 설명 {len(column_glossary)}개를 {run_config.column_glossary_path}에서 불러옴"
+            "(표시용, 분석 대상 선정에는 사용하지 않음)"
+        )
 
     decisions = decide_analyses(profile, run_config)
     results: list[AnalysisResult] = []
@@ -160,6 +122,7 @@ def run(run_config: RunConfig) -> list[AnalysisResult]:
         params = dict(decision.params)
         params["fig_dir"] = fig_dir
         params["thresholds"] = run_config.thresholds
+        params["column_glossary"] = column_glossary
 
         started = time.perf_counter()
         try:
@@ -198,7 +161,10 @@ def run(run_config: RunConfig) -> list[AnalysisResult]:
     if "json" in run_config.formats:
         from eda_report.render.context.json_builder import render as render_json
 
-        render_json(results, run_config.output_dir, profile=profile, run_config=run_config)
+        render_json(
+            results, run_config.output_dir, profile=profile, run_config=run_config,
+            column_glossary=column_glossary,
+        )
     if "pdf" in run_config.formats:
         from eda_report.render.pdf.builder import render as render_pdf
 

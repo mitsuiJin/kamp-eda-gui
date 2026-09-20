@@ -109,14 +109,12 @@ def run(df: pd.DataFrame, profile: DatasetProfile, params: dict) -> AnalysisResu
         section_id="08_correlation",
         title="Correlation Analysis (상관관계 분석)",
         purpose=(
-            "수치형 변수 쌍이 함께 움직이는 정도를 Pearson(직선 관계)과 Spearman(순위 기반 단조 "
-            "관계) 두 가지로 산출합니다. 상관관계는 인과관계를 뜻하지 않습니다."
+            "상관계수는 두 변수가 함께 움직이는 정도를 나타내는 지표입니다. Pearson(직선 관계)과 "
+            "Spearman(순위 기반 관계)으로 변수 쌍 간 연관성을 확인할 수 있습니다."
         ),
         rationale=(
-            "Pearson은 두 변수가 직선에 가깝게 함께 변하는 정도(-1~1), Spearman은 값의 크기 대신 "
-            "순위만 보고 한 방향으로 함께 변하는 정도를 나타냅니다. 두 값이 크게 다르면 관계가 "
-            "직선형이 아닐 수 있습니다. 히트맵은 서로 비슷하게 움직이는 변수끼리 가까이 오도록 "
-            "순서를 재배열했고, 칸의 색이 진할수록(빨강=양, 파랑=음) 상관이 강함을 뜻합니다."
+            "상관관계는 인과관계를 뜻하지 않습니다. 두 값이 크게 다르면 관계가 직선형이 아닐 수 "
+            "있습니다. 히트맵은 비슷하게 움직이는 변수끼리 가깝게 재배열했습니다."
         ),
         input_columns=columns,
         parameters={

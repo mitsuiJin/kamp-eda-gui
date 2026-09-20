@@ -28,8 +28,10 @@ def _decision(decisions, section_id):
     return next(d for d in decisions if d.section_id == section_id)
 
 
-def test_iqr_zero_column_is_skipped_not_reported_as_outliers(tmp_path):
-    # EX3.MELT_TEMP처럼 제어되어 한 값이 반복되면 Q1=중앙값=Q3 → IQR=0이 된다.
+def test_iqr_zero_column_still_computes_outliers_via_same_formula(tmp_path):
+    # EX3.MELT_TEMP처럼 제어되어 한 값이 91%를 차지하면 Q1=Q3=251 → IQR=0이 된다. 이 경우에도
+    # 컬럼을 제외하지 않고 동일한 공식(하한=Q1-1.5*IQR, 상한=Q3+1.5*IQR)을 그대로 적용한다 —
+    # IQR=0이면 하한=상한=251이 되어, 251이 아닌 값(250×5, 252×5)이 전부 이상치로 집계된다.
     controlled = [251] * 100 + [250] * 5 + [252] * 5
     varied = list(range(110))
     df = pd.DataFrame({"controlled": controlled, "varied": varied})
@@ -38,15 +40,38 @@ def test_iqr_zero_column_is_skipped_not_reported_as_outliers(tmp_path):
     result = outlier.run_iqr(df, profile, {"fig_dir": str(tmp_path), "thresholds": AnalysisThresholds()})
     table = result.tables[0].set_index("column")
 
-    assert table.loc["controlled", "iqr_status"] == "SKIPPED"
-    assert pd.isna(table.loc["controlled", "outlier_rate"]) or table.loc["controlled", "outlier_rate"] is None
+    assert table.loc["controlled", "iqr"] == 0
+    assert table.loc["controlled", "lower_bound"] == 251
+    assert table.loc["controlled", "upper_bound"] == 251
+    assert table.loc["controlled", "outlier_count"] == 10  # 250×5 + 252×5
+    # 표시용 테이블은 round_floats()로 소수 4자리까지 반올림된다.
+    assert table.loc["controlled", "outlier_rate"] == pytest.approx(10 / 110, abs=1e-4)
     assert table.loc["controlled", "mode"] == 251
-    assert table.loc["varied", "iqr_status"] == "SUCCESS"
-    assert "controlled" in result.parameters["skipped_columns_iqr_zero"]
+    assert "controlled" in result.parameters["zero_iqr_columns"]
 
     messages = " ".join(f.message_ko for f in result.findings)
     assert "IQR=0" in messages
-    assert "이상치 없음" not in messages
+    assert "정의할 수 없음" not in messages
+    assert "분석 불가" not in messages
+
+
+def test_iqr_zero_boundary_flags_values_different_from_mode_as_outliers(tmp_path):
+    # 요청받은 검증: 특정 값이 지배적이어서 IQR=0이 되는 경우, 그 값과 다른 값들이 실제로
+    # 이상치로 판정되는지 확인한다. 단순 반복 5개(5,5,5,5,5,7,8,9)는 n=8이라 pandas의 기본
+    # 선형보간 분위수 계산에서 Q3가 5를 넘어가 버려(Q1=5, Q3=7.25) IQR=0이 되지 않으므로,
+    # 같은 취지를 실제로 IQR=0이 되는 비율(최빈값이 75% 이상)로 재현한다: 5가 10개, 7/8/9가 각 1개.
+    df = pd.DataFrame({"value": [5] * 10 + [7, 8, 9]})
+    profile = _profile(df)
+
+    result = outlier.run_iqr(df, profile, {"fig_dir": str(tmp_path), "thresholds": AnalysisThresholds()})
+    row = result.tables[0].set_index("column").loc["value"]
+
+    assert row["iqr"] == 0
+    assert row["lower_bound"] == 5
+    assert row["upper_bound"] == 5
+    # 5가 아닌 값(7, 8, 9) 3개가 전부 이상치로 판정되어야 한다.
+    assert row["outlier_count"] == 3
+    assert row["outlier_rate"] == pytest.approx(3 / 13, abs=1e-4)
 
 
 def test_skewness_finding_has_no_transformation_recommendation():
@@ -62,22 +87,11 @@ def test_skewness_finding_has_no_transformation_recommendation():
         assert banned not in text
 
 
-def test_clustering_decision_does_not_depend_on_target_imbalance():
-    balanced = pd.DataFrame({"a": range(200), "b": range(200), "t": [0, 1] * 100})
-    imbalanced = pd.DataFrame({"a": range(200), "b": range(200), "t": [0] * 199 + [1]})
-
-    for df in (balanced, imbalanced):
-        profile = _profile(df, target_columns=["t"])
-        decision = _decision(decide_analyses(profile, _run_config(target_columns=["t"])), "clustering")
-        assert decision.run
-        assert decision.params == {}  # 알고리즘 선택에 target 정보를 전달하지 않는다
-
-
 def test_categorical_analyses_are_not_applicable_without_categorical_columns():
     df = pd.DataFrame({"a": range(100), "b": range(100)})
     decisions = decide_analyses(_profile(df), _run_config())
 
-    for section in ("distribution_categorical", "cat_numeric", "cat_categorical", "association"):
+    for section in ("distribution_categorical", "cat_numeric", "cat_categorical"):
         decision = _decision(decisions, section)
         assert not decision.run
         assert decision.status == "NOT_APPLICABLE"
@@ -96,35 +110,6 @@ def test_target_analysis_not_applicable_when_target_not_specified():
 def test_timeseries_not_applicable_without_datetime_column():
     df = pd.DataFrame({"a": range(100), "b": range(100)})
     decision = _decision(decide_analyses(_profile(df), _run_config()), "timeseries")
-    assert decision.status == "NOT_APPLICABLE"
-
-
-def test_pca_not_applicable_with_too_few_numeric_columns():
-    df = pd.DataFrame({"a": range(100), "b": range(100)})
-    decision = _decision(decide_analyses(_profile(df), _run_config()), "pca")
-    assert decision.status == "NOT_APPLICABLE"
-    assert "수치형 변수 2개" in decision.reason
-
-
-def test_association_skipped_when_combinations_explode():
-    thresholds = AnalysisThresholds(association_max_combinations=10)
-    df = pd.DataFrame(
-        {
-            "a": [f"a{i%6}" for i in range(120)],
-            "b": [f"b{i%7}" for i in range(120)],
-        }
-    )
-    profile = build_dataset_profile(df, _MANIFEST, thresholds=thresholds)
-    decision = _decision(decide_analyses(profile, _run_config(thresholds=thresholds)), "association")
-
-    assert decision.status == "SKIPPED"
-    assert "조합" in decision.reason
-
-
-@pytest.mark.parametrize("n_rows", [10, 50])
-def test_multivariate_outlier_requires_enough_rows(n_rows):
-    df = pd.DataFrame({"a": range(n_rows), "b": range(n_rows), "c": range(n_rows)})
-    decision = _decision(decide_analyses(_profile(df), _run_config()), "outlier_multivariate")
     assert decision.status == "NOT_APPLICABLE"
 
 
@@ -161,7 +146,9 @@ def test_timeseries_computes_summary_for_all_columns_not_just_displayed(tmp_path
         assert all_summary[name]["n_obs"] == n
 
 
-def test_timeseries_rolling_window_expressed_as_count_not_time_unit(tmp_path):
+def test_timeseries_uniform_interval_is_verified_and_expressed_in_time_units(tmp_path):
+    # 타임스탬프 간격이 데이터 전체에서 완전히 일정하면(여기서는 1초 간격), 도메인 문서 없이도
+    # 데이터 자체에서 수집 주기를 검증하고 이동평균 구간을 시간 단위로도 함께 표시해야 한다.
     n = 200
     dates = pd.date_range("2024-01-01", periods=n, freq="s")
     df = pd.DataFrame({"ts": dates, "value": range(n)})
@@ -171,9 +158,29 @@ def test_timeseries_rolling_window_expressed_as_count_not_time_unit(tmp_path):
         df, profile,
         {"datetime_column": "ts", "datetime_source": "테스트", "fig_dir": str(tmp_path), "thresholds": thresholds},
     )
+    assert result.parameters["sampling_interval_verified"] is True
+    assert result.parameters["sampling_interval_seconds"] == pytest.approx(1.0)
     assert "관측치" in result.parameters["rolling_window_unit"]
-    for banned in ["초마다", "분마다", f"{result.parameters['rolling_window']}초"]:
-        assert banned not in (result.rationale or "")
+    assert "검증됨" in result.parameters["rolling_window_unit"]
+
+
+def test_timeseries_irregular_interval_falls_back_to_count_only(tmp_path):
+    # 타임스탬프 간격이 들쭉날쭉하면(수집 주기를 신뢰할 수 없으면) 여전히 관측치 개수로만
+    # 표현해야 하고, 존재하지 않는 간격을 시간 단위로 지어내면 안 된다.
+    n = 200
+    irregular_gaps = pd.Series(pd.to_timedelta([1, 2, 1, 5, 1, 3, 1, 2] * (n // 8), unit="s"))
+    dates = pd.Timestamp("2024-01-01") + irregular_gaps.cumsum()
+    df = pd.DataFrame({"ts": dates, "value": range(len(dates))})
+    thresholds = AnalysisThresholds()
+    profile = build_dataset_profile(df, _MANIFEST, thresholds=thresholds)
+    result = timeseries.run(
+        df, profile,
+        {"datetime_column": "ts", "datetime_source": "테스트", "fig_dir": str(tmp_path), "thresholds": thresholds},
+    )
+    assert result.parameters["sampling_interval_verified"] is False
+    assert "관측치" in result.parameters["rolling_window_unit"]
+    for banned in ["초마다", "분마다", "검증됨"]:
+        assert banned not in result.parameters["rolling_window_unit"]
 
 
 def test_pipeline_assigns_core_and_advanced_tiers(tmp_path):
@@ -196,6 +203,4 @@ def test_pipeline_assigns_core_and_advanced_tiers(tmp_path):
     assert tiers["01_overview"] == "core"
     assert tiers["04_descriptive"] == "core"
     assert tiers["08_correlation"] == "core"
-    assert tiers["12_pca"] == "advanced"
-    assert tiers["13_clustering"] == "advanced"
     assert tiers["15_target_binary"] == "advanced"

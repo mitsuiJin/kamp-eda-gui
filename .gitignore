@@ -3,6 +3,7 @@ dataset/
 
 # eda_report CLI run outputs (generated PDFs/figures/JSON, not source code)
 outputs/
+out/
 
 # Team research docs — kept local only, not in this repo
 notion/

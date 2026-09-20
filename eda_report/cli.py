@@ -2,11 +2,12 @@
 
 사용 예:
     python -m eda_report.cli --input data.csv --output-dir out/
-    python -m eda_report.cli --input data.csv --output-dir out/ --metadata guideline.json
-    python -m eda_report.cli --input data.csv --output-dir out/ --guideline-pdf guideline.pdf
     python -m eda_report.cli --input data.csv --output-dir out/ --target passorfail
+    python -m eda_report.cli --input data.csv --output-dir out/ --column-glossary glossary.json
 
-target은 EDA가 추론하지 않는다 — `--target` 또는 메타데이터에 명시된 경우에만 분석한다.
+target은 EDA가 추론하지 않는다 — `--target`으로 명시된 경우에만 분석한다.
+--column-glossary는 컬럼명에 대한 사람이 검수한 설명 텍스트를 표시용으로만 덧붙인다(초안은
+`python -m eda_report.column_glossary`로 PDF에서 추출).
 """
 
 from __future__ import annotations
@@ -28,18 +29,19 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="KAMP 제조 데이터 EDA 자동 리포트 생성")
     parser.add_argument("--input", required=True, help="CSV/TXT 표 파일 경로")
     parser.add_argument("--output-dir", required=True, help="report.pdf / context.md / context.json 저장 위치")
-    parser.add_argument("--metadata", default=None, help="Dataset Guidebook 메타데이터 JSON 경로(검증된 정보)")
-    parser.add_argument("--guideline-pdf", default=None, help="Dataset Guidebook PDF 경로(메타데이터 초안 추출)")
     parser.add_argument("--target", default=None, help="target 컬럼명(콤마로 여러 개)")
+    parser.add_argument(
+        "--column-glossary", default=None,
+        help="사람이 검수한 컬럼 설명 JSON 경로(표시용, type/target 판단에는 쓰이지 않음)",
+    )
     parser.add_argument("--formats", default="pdf,markdown,json", help="생성할 산출물")
     args = parser.parse_args()
 
     run_config = RunConfig(
         input_path=args.input,
         output_dir=args.output_dir,
-        metadata_path=args.metadata,
-        guideline_pdf_path=args.guideline_pdf,
         target_columns=[c.strip() for c in args.target.split(",")] if args.target else None,
+        column_glossary_path=args.column_glossary,
         formats=[f.strip() for f in args.formats.split(",")],
         thresholds=AnalysisThresholds(),
     )

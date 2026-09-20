@@ -104,6 +104,27 @@ def downsample(df: pd.DataFrame, max_points: int = 5000, random_state: int = 0) 
     return df.sample(n=max_points, random_state=random_state).sort_index()
 
 
+def with_description(
+    label: str, column_name: str, column_glossary: dict[str, str] | None, max_chars: int = 30
+) -> str:
+    """그래프 제목/축 라벨에 컬럼 원래 이름(label)과 사람이 검수한 설명을 겹치지 않게 병기한다.
+
+    설명을 label 뒤에 이어 붙이지 않고 줄바꿈으로 분리한다 — 같은 줄에 붙이면 그래프 폭에
+    따라 글자가 겹치거나 잘리기 쉽기 때문이다. matplotlib 제목/축 라벨은 '\\n'을 그대로
+    여러 줄로 렌더링한다. column_glossary가 없거나 해당 컬럼 설명이 없으면 label을 그대로
+    돌려준다(원래 이름만 표시) — 이 함수는 표시 문자열만 조합할 뿐 어떤 분석 로직에도
+    관여하지 않는다.
+    """
+    if not column_glossary:
+        return label
+    description = column_glossary.get(column_name)
+    if not description:
+        return label
+    if len(description) > max_chars:
+        description = description[: max_chars - 1] + "…"
+    return f"{label}\n({description})"
+
+
 def round_floats(df: pd.DataFrame, decimals: int = 4) -> pd.DataFrame:
     """표시용 표의 소수 자릿수만 정리한다(ai_context의 원본 수치는 건드리지 않는다)."""
     float_cols = df.select_dtypes(include="float").columns

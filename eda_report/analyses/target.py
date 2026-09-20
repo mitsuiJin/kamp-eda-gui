@@ -1,4 +1,4 @@
-"""15. Target Analysis — Dataset Guidebook/실행 옵션에서 target이 명시된 경우에만 수행한다.
+"""15. Target Analysis — 실행 옵션(`--target`)에서 target이 명시된 경우에만 수행한다.
 
 EDA는 target을 추측하지 않는다. 또한 "평균 차이가 크다 = 중요한 변수"라고 단정하지 않으며,
 클래스별 통계 차이라는 관찰 사실과 그 크기(표준화된 차이)만 제시한다.
@@ -13,29 +13,38 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from eda_report.analyses.base import AnalysisResult, Figure, Finding, round_floats, select_display_columns
+from eda_report.analyses.base import (
+    AnalysisResult,
+    Figure,
+    Finding,
+    round_floats,
+    select_display_columns,
+    with_description,
+)
 from eda_report.profiling.dataset_profile import DatasetProfile
 
 MAX_CLASS_DISPLAY = 20
 TOP_DIFF_VARS = 4
+GRID_SIZE = 2  # 그래프 한 행당 최대 개수(지면 가독성 제약, 통계적 기준 아님)
 
 
 def run(df: pd.DataFrame, profile: DatasetProfile, params: dict) -> AnalysisResult:
     target_columns = params["target_columns"]
     fig_dir = params["fig_dir"]
+    column_glossary: dict[str, str] = params.get("column_glossary") or {}
 
     if len(target_columns) > 1:
-        return _run_multilabel(df, target_columns, fig_dir)
+        return _run_multilabel(df, target_columns, fig_dir, column_glossary)
 
     target = target_columns[0]
     series = df[target].dropna()
     n_unique = int(series.nunique())
 
     if n_unique == 2:
-        return _run_binary(df, profile, target, fig_dir)
+        return _run_binary(df, profile, target, fig_dir, column_glossary)
     if pd.api.types.is_numeric_dtype(series) and n_unique > MAX_CLASS_DISPLAY:
-        return _run_continuous(df, profile, target, fig_dir)
-    return _run_multiclass(df, profile, target, fig_dir)
+        return _run_continuous(df, profile, target, fig_dir, column_glossary)
+    return _run_multiclass(df, profile, target, fig_dir, column_glossary)
 
 
 def _class_table(series: pd.Series) -> pd.DataFrame:
@@ -71,7 +80,9 @@ def _group_difference_table(df: pd.DataFrame, target: str, numeric_columns: list
     return table
 
 
-def _run_binary(df: pd.DataFrame, profile: DatasetProfile, target: str, fig_dir: str) -> AnalysisResult:
+def _run_binary(
+    df: pd.DataFrame, profile: DatasetProfile, target: str, fig_dir: str, column_glossary: dict[str, str]
+) -> AnalysisResult:
     series = df[target].dropna()
     ratio_table = _class_table(series)
     minority_ratio = float(ratio_table["ratio"].min())
@@ -83,7 +94,9 @@ def _run_binary(df: pd.DataFrame, profile: DatasetProfile, target: str, fig_dir:
     for i, ratio in enumerate(ratio_table["ratio"]):
         ax.text(i, ratio, f"{ratio:.2%}", ha="center", va="bottom", fontsize=9)
     ax.set_ylabel("비율")
-    ax.set_title(f"{target} 클래스 구성비", fontsize=10)
+    # 이 그래프는 폭이 좁아(figsize 3.8in) PDF 페이지 폭에 맞춰 확대될 때 글자가 커지므로
+    # 설명은 짧게 자른다 — 다른(더 넓은) 그래프의 max_chars와 다른 이유.
+    ax.set_title(with_description(f"{target} 클래스 구성비", target, column_glossary, max_chars=14), fontsize=10)
     fig.tight_layout()
     ratio_path = os.path.join(fig_dir, "target_class_ratio.png")
     fig.savefig(ratio_path, dpi=150)
@@ -97,22 +110,23 @@ def _run_binary(df: pd.DataFrame, profile: DatasetProfile, target: str, fig_dir:
         else select_display_columns(df, numeric_columns, TOP_DIFF_VARS)
     )
 
-    if top_columns:
-        fig2, axes = plt.subplots(1, len(top_columns), figsize=(3.6 * len(top_columns), 3.2))
-        axes = [axes] if len(top_columns) == 1 else list(axes)
-        valid = df[df[target].notna()]
-        for ax, column in zip(axes, top_columns):
+    valid = df[df[target].notna()]
+    for i in range(0, len(top_columns), GRID_SIZE):
+        chunk = top_columns[i:i + GRID_SIZE]
+        fig2, axes = plt.subplots(1, len(chunk), figsize=(3.6 * len(chunk), 3.2))
+        axes = [axes] if len(chunk) == 1 else list(axes)
+        for ax, column in zip(axes, chunk):
             data = [valid.loc[valid[target] == cls, column].dropna() for cls in classes]
             ax.boxplot(data, tick_labels=[str(c) for c in classes])
-            ax.set_title(column, fontsize=9)
-            ax.set_xlabel(target, fontsize=8)
+            ax.set_title(with_description(column, column, column_glossary), fontsize=9)
+            ax.set_xlabel(with_description(target, target, column_glossary, max_chars=20), fontsize=8)
         fig2.tight_layout()
-        box_path = os.path.join(fig_dir, "target_group_box.png")
+        box_path = os.path.join(fig_dir, f"target_group_box_{i}.png")
         fig2.savefig(box_path, dpi=150)
         plt.close(fig2)
         figures.append(
             Figure(kind="boxplot", image_path=box_path,
-                   caption="표준화된 클래스 간 평균 차이가 큰 순으로 선택된 변수의 클래스별 분포")
+                   caption=f"표준화된 클래스 간 평균 차이가 큰 순으로 선택된 변수의 클래스별 분포: {', '.join(chunk)}")
         )
 
     findings = [
@@ -128,15 +142,11 @@ def _run_binary(df: pd.DataFrame, profile: DatasetProfile, target: str, fig_dir:
     return AnalysisResult(
         section_id="15_target_binary",
         title="Target Analysis - 이진 (목표변수 분석)",
-        purpose=(
-            f"지정된 target({target})의 클래스 구성비와, 클래스별로 수치형 변수 값의 분포가 어떻게 "
-            "다르게 관찰되는지 정리합니다."
-        ),
+        purpose="지정된 target의 클래스 구성비와, 클래스별 수치형 변수 분포 차이를 확인합니다.",
         rationale=(
-            "아래 표는 클래스별 평균과 그 차이를 pooled 표준편차로 나눈 표준화된 차이(단위가 다른 "
-            "변수끼리 비교하기 위함)입니다. 표준화된 차이가 크다는 것은 두 클래스에서 값의 분포 "
-            "위치가 다르게 관찰됐다는 뜻이며, 그 변수가 target의 원인이라거나 모델에서 중요하다는 "
-            "뜻은 아닙니다. 박스플롯은 이 표의 상위 변수들을 클래스별로 그린 것입니다."
+            "표준화된 차이(클래스 간 평균 차이 ÷ pooled 표준편차)가 크다는 것은 두 클래스에서 값의 "
+            "분포 위치가 다르게 관찰됐다는 뜻일 뿐, target의 원인이거나 모델에서 중요하다는 뜻은 "
+            "아닙니다."
         ),
         input_columns=[target] + numeric_columns,
         parameters={
@@ -157,14 +167,16 @@ def _run_binary(df: pd.DataFrame, profile: DatasetProfile, target: str, fig_dir:
     )
 
 
-def _run_multiclass(df: pd.DataFrame, profile: DatasetProfile, target: str, fig_dir: str) -> AnalysisResult:
+def _run_multiclass(
+    df: pd.DataFrame, profile: DatasetProfile, target: str, fig_dir: str, column_glossary: dict[str, str]
+) -> AnalysisResult:
     ratio_table = _class_table(df[target].dropna())
     shown = ratio_table.head(MAX_CLASS_DISPLAY)
 
     fig, ax = plt.subplots(figsize=(5.5, 3.4))
     ax.bar(shown["class"].astype(str), shown["count"], color="#55A868")
     ax.set_ylabel("관측 건수")
-    ax.set_title(f"{target} 클래스별 관측 건수", fontsize=10)
+    ax.set_title(with_description(f"{target} 클래스별 관측 건수", target, column_glossary, max_chars=18), fontsize=10)
     ax.tick_params(axis="x", rotation=45, labelsize=8)
     fig.tight_layout()
     path = os.path.join(fig_dir, "target_multiclass_freq.png")
@@ -174,8 +186,8 @@ def _run_multiclass(df: pd.DataFrame, profile: DatasetProfile, target: str, fig_
     return AnalysisResult(
         section_id="15_target_multiclass",
         title="Target Analysis - 다중클래스 (목표변수 분석)",
-        purpose=f"지정된 target({target})의 클래스별 관측 건수와 구성비를 정리합니다.",
-        rationale=f"클래스가 {len(ratio_table)}개 관찰됐으며 그래프에는 상위 {len(shown)}개를 표시했습니다(전체는 Context에 기록).",
+        purpose="지정된 target의 클래스별 관측 건수와 구성비를 확인합니다.",
+        rationale=f"그래프에는 상위 {MAX_CLASS_DISPLAY}개 클래스만 표시했습니다(전체는 표·Context에 기록).",
         input_columns=[target],
         parameters={"target": target, "n_classes": int(len(ratio_table))},
         figures=[Figure(kind="bar", image_path=path)],
@@ -184,13 +196,18 @@ def _run_multiclass(df: pd.DataFrame, profile: DatasetProfile, target: str, fig_
     )
 
 
-def _run_continuous(df: pd.DataFrame, profile: DatasetProfile, target: str, fig_dir: str) -> AnalysisResult:
+def _run_continuous(
+    df: pd.DataFrame, profile: DatasetProfile, target: str, fig_dir: str, column_glossary: dict[str, str]
+) -> AnalysisResult:
     series = df[target].dropna()
     fig, ax = plt.subplots(figsize=(4.4, 3.4))
     ax.hist(series, bins=30, color="#4C72B0")
     ax.set_xlabel(target)
     ax.set_ylabel("빈도")
-    ax.set_title(f"{target} 분포 (왜도 {series.skew():.2f})", fontsize=10)
+    ax.set_title(
+        with_description(f"{target} 분포 (왜도 {series.skew():.2f})", target, column_glossary, max_chars=15),
+        fontsize=10,
+    )
     fig.tight_layout()
     path = os.path.join(fig_dir, "target_continuous_hist.png")
     fig.savefig(path, dpi=150)
@@ -206,8 +223,8 @@ def _run_continuous(df: pd.DataFrame, profile: DatasetProfile, target: str, fig_
     return AnalysisResult(
         section_id="15_target_continuous",
         title="Target Analysis - 연속값 (목표변수 분석)",
-        purpose=f"지정된 target({target})의 분포와, 각 수치형 변수와의 상관계수를 산출합니다.",
-        rationale="상관계수는 함께 움직이는 정도를 뜻하며 인과관계가 아닙니다. Pearson(직선)과 Spearman(순위 기반)을 함께 제시합니다.",
+        purpose="지정된 target의 분포와, 각 수치형 변수와의 상관계수를 확인합니다.",
+        rationale="상관계수는 함께 움직이는 정도를 뜻하며 인과관계가 아닙니다.",
         input_columns=[target] + numeric_columns,
         parameters={"target": target, "skew": float(series.skew())},
         figures=[Figure(kind="histogram", image_path=path)],
@@ -220,7 +237,12 @@ def _run_continuous(df: pd.DataFrame, profile: DatasetProfile, target: str, fig_
     )
 
 
-def _run_multilabel(df: pd.DataFrame, target_columns: list[str], fig_dir: str) -> AnalysisResult:
+def _run_multilabel(
+    df: pd.DataFrame, target_columns: list[str], fig_dir: str, column_glossary: dict[str, str]
+) -> AnalysisResult:
+    # target 컬럼이 여러 개라 x축에 전부 나열된다 — 각각에 설명까지 붙이면 라벨이 겹치므로
+    # (요청 취지: "겹치지 않도록") 여기서는 원래 이름만 표시하고, 설명은 02_column_profile의
+    # description 표를 참고하도록 안내한다.
     frequency = df[target_columns].sum().sort_values(ascending=False)
     fig, ax = plt.subplots(figsize=(max(5.5, 0.4 * len(target_columns)), 3.6))
     ax.bar(frequency.index.astype(str), frequency.values, color="#C44E52")
@@ -237,8 +259,8 @@ def _run_multilabel(df: pd.DataFrame, target_columns: list[str], fig_dir: str) -
     return AnalysisResult(
         section_id="15_target_multilabel",
         title="Target Analysis - 다중 컬럼 (목표변수 분석)",
-        purpose="target이 여러 개의 이진 컬럼으로 기록된 경우, 컬럼별 관측 건수와 동시 발생 건수를 정리합니다.",
-        rationale=f"한 행에서 2개 이상의 target 컬럼이 동시에 1인 경우가 {co_occurrence:,}건 관찰됐습니다.",
+        purpose="target이 여러 이진 컬럼으로 기록된 경우, 컬럼별 관측 건수와 동시 발생 빈도를 확인합니다.",
+        rationale="동시 발생 건수(rows_with_multiple)는 한 행에서 target 컬럼 2개 이상이 함께 1인 경우입니다.",
         input_columns=list(target_columns),
         parameters={"target_columns": list(target_columns), "rows_with_multiple": co_occurrence},
         figures=[Figure(kind="bar", image_path=path)],

@@ -1,9 +1,9 @@
 """컬럼 프로파일을 모아 분석 대상 집합을 만든다.
 
 여기서 만드는 집합(numeric/categorical/datetime)은 "이 데이터로 어떤 분석이 성립하는가"를
-판단하는 입력이며, 변수의 도메인 의미와는 무관하다. target은 Dataset Guidebook/사용자 지정
-으로만 정해지고, 지정된 target은 role="target"으로 표시되어 설명변수 집합(numeric_columns 등)
-에서 자연히 빠진다 — PCA/Clustering 등 feature 입력에도 포함되지 않는다.
+판단하는 입력이며, 변수의 도메인 의미와는 무관하다. target은 실행 옵션(`--target`)으로만
+정해지고, 지정된 target은 role="target"으로 표시되어 설명변수 집합(numeric_columns 등)에서
+자연히 빠진다.
 """
 
 from __future__ import annotations
@@ -14,8 +14,6 @@ import pandas as pd
 
 from eda_report.config import AnalysisThresholds
 from eda_report.io.manifest import ParseManifest
-from eda_report.metadata.schema import DatasetMetadata
-from eda_report.metadata.validator import MetadataValidationReport
 from eda_report.profiling.column_profile import ColumnProfile, classify_target_kind, profile_column
 
 
@@ -31,8 +29,6 @@ class DatasetProfile:
     excluded_columns: dict[str, str] = field(default_factory=dict)
     target_columns: list[str] = field(default_factory=list)
     parse_manifest: ParseManifest | None = None
-    metadata: DatasetMetadata | None = None
-    validation: MetadataValidationReport | None = None
 
     def column(self, name: str) -> ColumnProfile:
         for profile in self.columns:
@@ -48,20 +44,15 @@ class DatasetProfile:
 def build_dataset_profile(
     df: pd.DataFrame,
     manifest: ParseManifest,
-    metadata: DatasetMetadata | None = None,
-    validation: MetadataValidationReport | None = None,
     thresholds: AnalysisThresholds | None = None,
     target_columns: list[str] | None = None,
 ) -> DatasetProfile:
     thresholds = thresholds or AnalysisThresholds()
-    metadata = metadata or DatasetMetadata.empty()
     targets = list(target_columns or [])
 
     profiles = [
         profile_column(
             df[name],
-            declared_type=metadata.declared_type(name),
-            confirmed_type=validation.confirmed_type(name) if validation else None,
             datetime_parse_min_rate=thresholds.datetime_parse_min_rate,
             categorical_max_cardinality=thresholds.categorical_max_cardinality,
         )
@@ -105,8 +96,6 @@ def build_dataset_profile(
         excluded_columns=excluded,
         target_columns=targets,
         parse_manifest=manifest,
-        metadata=metadata,
-        validation=validation,
     )
 
 

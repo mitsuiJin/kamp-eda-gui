@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import chi2_contingency
 
-from eda_report.analyses.base import AnalysisResult, Figure, round_floats
+from eda_report.analyses.base import AnalysisResult, Figure, round_floats, with_description
 from eda_report.config import AnalysisThresholds
 from eda_report.profiling.dataset_profile import DatasetProfile
 
@@ -30,6 +30,7 @@ def run(df: pd.DataFrame, profile: DatasetProfile, params: dict) -> AnalysisResu
     # 범주 수가 적은 변수부터 사용한다: 교차표 칸 수가 두 변수의 범주 수의 곱으로 늘어나기 때문.
     columns = sorted(profile.categorical_columns, key=lambda c: df[c].nunique())[:MAX_COLUMNS]
     fig_dir = params["fig_dir"]
+    column_glossary: dict[str, str] = params.get("column_glossary") or {}
 
     figures = []
     scores = []
@@ -37,7 +38,7 @@ def run(df: pd.DataFrame, profile: DatasetProfile, params: dict) -> AnalysisResu
         for j in range(i + 1, len(columns)):
             a, b = columns[i], columns[j]
             crosstab = pd.crosstab(df[a], df[b])
-            if crosstab.size > thresholds.association_max_combinations:
+            if crosstab.size > thresholds.max_crosstab_cells:
                 continue
             v = _cramers_v(crosstab)
             scores.append({"column_a": a, "column_b": b, "cramers_v": v, "cells": int(crosstab.size)})
@@ -48,8 +49,8 @@ def run(df: pd.DataFrame, profile: DatasetProfile, params: dict) -> AnalysisResu
             ax.set_xticklabels(crosstab.columns, rotation=45, fontsize=7)
             ax.set_yticks(range(len(crosstab.index)))
             ax.set_yticklabels(crosstab.index, fontsize=7)
-            ax.set_xlabel(b, fontsize=8)
-            ax.set_ylabel(a, fontsize=8)
+            ax.set_xlabel(with_description(b, b, column_glossary, max_chars=20), fontsize=8)
+            ax.set_ylabel(with_description(a, a, column_glossary, max_chars=20), fontsize=8)
             ax.set_title(f"{a} × {b} (Cramér's V={v:.2f})", fontsize=9)
             fig.colorbar(image, ax=ax, shrink=0.8)
             fig.tight_layout()
@@ -61,11 +62,10 @@ def run(df: pd.DataFrame, profile: DatasetProfile, params: dict) -> AnalysisResu
     return AnalysisResult(
         section_id="11_cat_categorical",
         title="Categorical × Categorical (범주형 간 교차 분석)",
-        purpose="두 범주형 변수의 값 조합이 어떤 빈도로 나타나는지와 연관 강도(Cramér's V)를 산출합니다.",
+        purpose="두 범주형 변수의 값 조합이 어떤 빈도로 나타나는지와 연관 강도(Cramér's V)를 확인합니다.",
         rationale=(
-            f"범주 수가 적은 변수부터 최대 {MAX_COLUMNS}개를 골라 모든 쌍을 비교했습니다: {columns}. "
-            "그래프 읽는 법: 칸의 색이 진할수록 그 값 조합의 관측 건수가 많다는 뜻이고, Cramér's V는 "
-            "0(연관 없음)~1(완전 연관) 사이의 연관 강도입니다. 연관 강도는 인과관계를 뜻하지 않습니다."
+            "칸의 색이 진할수록 그 값 조합의 관측 건수가 많다는 뜻입니다. Cramér's V는 0(연관 없음)"
+            "~1(완전 연관) 사이의 연관 강도이며, 인과관계를 뜻하지 않습니다."
         ),
         input_columns=columns,
         parameters={"selection": "범주 수 오름차순", "columns": columns},

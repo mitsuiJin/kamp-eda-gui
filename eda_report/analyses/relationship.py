@@ -12,7 +12,7 @@ import eda_report.render.mpl_style  # noqa: F401
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from eda_report.analyses.base import AnalysisResult, Figure, downsample
+from eda_report.analyses.base import AnalysisResult, Figure, downsample, with_description
 from eda_report.config import AnalysisThresholds
 from eda_report.profiling.dataset_profile import DatasetProfile
 
@@ -51,6 +51,7 @@ def run(df: pd.DataFrame, profile: DatasetProfile, params: dict) -> AnalysisResu
     selected += [(a, b, value, "Spearman 상위(Pearson 상위 제외)") for a, b, value in monotonic]
 
     fig_dir = params["fig_dir"]
+    column_glossary: dict[str, str] = params.get("column_glossary") or {}
     sample = downsample(df[columns], max_points=3000)
     figures = []
     for i in range(0, len(selected), GRID_SIZE):
@@ -60,8 +61,8 @@ def run(df: pd.DataFrame, profile: DatasetProfile, params: dict) -> AnalysisResu
         for ax, (a, b, value, kind) in zip(axes, chunk):
             color = "#4C72B0" if kind.startswith("Pearson") else "#C44E52"
             ax.scatter(sample[a], sample[b], s=6, alpha=0.4, color=color)
-            ax.set_xlabel(a, fontsize=8)
-            ax.set_ylabel(b, fontsize=8)
+            ax.set_xlabel(with_description(a, a, column_glossary, max_chars=25), fontsize=8)
+            ax.set_ylabel(with_description(b, b, column_glossary, max_chars=25), fontsize=8)
             ax.set_title(f"{kind} ({value:+.2f})", fontsize=9)
         fig.tight_layout()
         path = os.path.join(fig_dir, f"relationship_{i}.png")
@@ -74,10 +75,9 @@ def run(df: pd.DataFrame, profile: DatasetProfile, params: dict) -> AnalysisResu
         title="Feature Relationship (변수 쌍 산점도)",
         purpose="상관계수만으로는 보이지 않는 두 변수의 실제 분포 형태를 산점도로 확인합니다.",
         rationale=(
-            f"전체 변수 조합 대신 {len(selected)}쌍만 표시했습니다. 선택 기준: Pearson 상관계수 절대값 "
-            f"상위 {len(linear)}쌍(파란색)과, 여기에 포함되지 않은 것 중 Spearman 상관계수 절대값 상위 "
-            f"{len(monotonic)}쌍(빨간색)입니다. Spearman만 높은 쌍은 직선이 아닌 형태로 함께 움직일 "
-            "수 있습니다. 점 하나가 관측치 한 건이며, 표시 속도를 위해 최대 3,000건만 표본으로 그렸습니다."
+            "전체 조합 대신 Pearson 상위 쌍(파란색)과 Spearman 상위 쌍(빨간색, Pearson 상위 제외)만 "
+            "표시했습니다. Spearman만 높은 쌍은 직선이 아닌 형태로 함께 움직일 수 있습니다. 표시 "
+            "속도를 위해 최대 3,000건을 표본으로 그렸습니다(선택 기준은 parameters 참고)."
         ),
         input_columns=columns,
         parameters={

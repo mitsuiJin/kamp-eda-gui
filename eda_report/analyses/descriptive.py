@@ -47,14 +47,11 @@ def run(df: pd.DataFrame, profile: DatasetProfile, params: dict) -> AnalysisResu
         section_id="04_descriptive",
         title="Descriptive Statistics (기술통계)",
         purpose=(
-            "수치형 변수의 개수·평균·중앙값·표준편차·사분위수·최소/최대값과 분포 형태 지표"
-            "(왜도, 첨도)를 산출합니다."
+            "기술통계는 변수의 값 분포를 몇 가지 숫자로 요약한 것입니다. 평균·중앙값·표준편차·"
+            "사분위수로 값의 중심과 퍼짐 정도를, 왜도·첨도로 분포의 치우침과 꼬리 형태를 확인할 "
+            "수 있습니다."
         ),
-        rationale=(
-            "q1/q3은 하위 25%·75% 지점의 값이고, skew(왜도)는 분포가 좌우 대칭에서 벗어난 정도, "
-            "kurtosis(첨도)는 꼬리가 두꺼운 정도입니다. 값이 크다고 해서 데이터 오류이거나 특정 "
-            "변환이 필요하다는 뜻은 아니며, 여기서는 관찰된 수치만 제시합니다."
-        ),
+        rationale="왜도·첨도 값이 크다고 데이터 오류이거나 변환이 필요하다는 뜻은 아닙니다.",
         input_columns=columns,
         parameters={"skew_report_threshold": thresholds.high_skew_threshold},
         tables=[round_floats(desc)],

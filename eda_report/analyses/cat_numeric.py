@@ -8,7 +8,7 @@ import eda_report.render.mpl_style  # noqa: F401
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from eda_report.analyses.base import AnalysisResult, Figure, round_floats, select_display_columns
+from eda_report.analyses.base import AnalysisResult, Figure, round_floats, select_display_columns, with_description
 from eda_report.config import AnalysisThresholds
 from eda_report.profiling.dataset_profile import DatasetProfile
 
@@ -25,6 +25,7 @@ def run(df: pd.DataFrame, profile: DatasetProfile, params: dict) -> AnalysisResu
     num_columns = select_display_columns(df, profile.numeric_columns, MAX_NUMERIC_COLUMNS)
 
     fig_dir = params["fig_dir"]
+    column_glossary: dict[str, str] = params.get("column_glossary") or {}
     figures = []
     summaries = []
     for cat in cat_columns:
@@ -38,7 +39,15 @@ def run(df: pd.DataFrame, profile: DatasetProfile, params: dict) -> AnalysisResu
             for ax, num in zip(axes, chunk):
                 data = [df.loc[df[cat] == group, num].dropna() for group in groups_order]
                 ax.boxplot(data, tick_labels=[str(g) for g in groups_order])
-                ax.set_title(f"{num} by {cat}", fontsize=9)
+                title = f"{num} by {cat}"
+                extra = []
+                if num in column_glossary:
+                    extra.append(f"{num}: {column_glossary[num][:20]}")
+                if cat in column_glossary:
+                    extra.append(f"{cat}: {column_glossary[cat][:20]}")
+                if extra:
+                    title += "\n(" + " / ".join(extra) + ")"
+                ax.set_title(title, fontsize=9)
                 ax.tick_params(axis="x", rotation=45, labelsize=7)
             fig.tight_layout()
             path = os.path.join(fig_dir, f"cat_numeric_{cat.replace('.', '_')}_{i}.png")
@@ -53,12 +62,10 @@ def run(df: pd.DataFrame, profile: DatasetProfile, params: dict) -> AnalysisResu
     return AnalysisResult(
         section_id="10_cat_numeric",
         title="Categorical × Numerical (범주별 수치형 분포 비교)",
-        purpose="범주형 변수의 그룹별로 수치형 변수의 분포가 어떻게 관찰되는지 비교합니다.",
+        purpose="박스플롯으로 범주형 변수의 그룹별로 수치형 변수의 분포가 어떻게 다른지 비교합니다.",
         rationale=(
-            f"비교 대상 선정 — 범주형: 범주 수가 적은 순으로 {cat_columns}(그룹당 표본이 많아 비교가 "
-            f"안정적), 수치형: 표준편차가 큰 순으로 {num_columns}. 그래프 읽는 법: 각 박스는 해당 "
-            "그룹의 중간 50% 구간, 박스 안 선은 중앙값입니다. 그룹 간 위치 차이는 관찰된 사실이며, "
-            "그 차이의 원인은 여기서 판단하지 않습니다."
+            "각 박스는 해당 그룹의 중간 50% 구간, 박스 안 선은 중앙값입니다. 그룹 간 위치 차이는 "
+            "관찰된 사실일 뿐 원인을 판단하지 않습니다(대상 선정 기준은 parameters 참고)."
         ),
         input_columns=cat_columns + num_columns,
         parameters={

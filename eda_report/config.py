@@ -25,25 +25,13 @@ class AnalysisThresholds:
     # --- 분석 성립 최소 조건 ---
     min_rows_for_analysis: int = 30  # 표본이 이보다 적으면 분포/관계 통계의 의미가 희박
     correlation_min_numeric: int = 2  # 상관계수는 변수 2개 이상에서만 정의됨
-    pca_min_numeric: int = 3  # 3개 미만이면 차원 축약의 실익이 없음
-    clustering_min_numeric: int = 2
-    clustering_min_rows: int = 100
-    clustering_k_min: int = 2
-    clustering_k_max: int = 6  # 실루엣 점수로 k를 고르는 탐색 범위(결과에 k와 점수를 기록)
-    multivariate_outlier_min_numeric: int = 3  # 변수 조합 이상치는 3개 이상에서만 의미
-    multivariate_outlier_min_rows: int = 500  # 밀도 추정이 불안정해지는 하한
-    association_max_cardinality: int = 20  # 조합 폭발 방지
-    association_min_support: float = 0.05
-    association_max_combinations: int = 10_000  # 카디널리티 곱이 이를 넘으면 SKIP
+    max_crosstab_cells: int = 10_000  # 교차표 칸 수(범주 수의 곱)가 이를 넘으면 해당 쌍은 건너뜀
 
     # --- 표시(지면) 제약 ---
-    max_display_columns: int = 16  # 개별 그래프로 그릴 변수 수 상한
     categorical_display_top_n: int = 20  # 범주가 이보다 많으면 Top-N만 표시(전체는 Context에 기록)
     top_correlation_pairs: int = 8
     scatter_max_pairs: int = 8
     timeseries_max_series: int = 4
-    max_displayed_clusters: int = 8
-    max_table_rows: int = 30
 
     # --- 보고 기준(판단이 아니라 표시 임계값) ---
     high_correlation_threshold: float = 0.7  # 상관계수를 "높음"으로 표시할 기준
@@ -54,6 +42,10 @@ class AnalysisThresholds:
     rolling_window_ratio: float = 0.01  # 전체 길이의 1%
     rolling_window_min: int = 5
     rolling_window_max: int = 500
+    # 연속된 타임스탬프 간격 중 이 비율 이상이 동일해야 "수집 주기가 검증됨"으로 인정하고
+    # 이동평균 구간을 시간 단위로도 표시한다(datetime_parse_min_rate와 같은 원칙 — 추정이
+    # 아니라 데이터 자체에서 검증). 간격이 이보다 덜 일정하면 관측치 개수로만 표현한다.
+    timeseries_interval_uniform_min_rate: float = 0.95
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -67,8 +59,9 @@ class AnalysisThresholds:
 class RunConfig:
     input_path: str
     output_dir: str
-    metadata_path: str | None = None
-    guideline_pdf_path: str | None = None
     target_columns: list[str] | None = None
+    # 사람이 검수한 컬럼 설명 JSON(선택). 순수 표시용이며 type/target/시간축 판단에는 쓰이지
+    # 않는다 — eda_report.column_glossary.extract_glossary_draft()로 초안을 만든 뒤 검수한다.
+    column_glossary_path: str | None = None
     formats: list[str] = field(default_factory=lambda: ["pdf", "markdown", "json"])
     thresholds: AnalysisThresholds = field(default_factory=AnalysisThresholds)

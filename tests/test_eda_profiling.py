@@ -7,8 +7,6 @@ import pandas as pd
 
 from eda_report.config import AnalysisThresholds
 from eda_report.io.manifest import ParseManifest
-from eda_report.metadata.schema import ColumnMetadata, DatasetMetadata
-from eda_report.metadata.validator import validate_metadata
 from eda_report.profiling.column_profile import profile_column
 from eda_report.profiling.dataset_profile import build_dataset_profile
 
@@ -42,14 +40,6 @@ def test_high_cardinality_text_is_text_not_categorical():
 def test_datetime_string_column_detected():
     values = ["2020-10-16 04:57:47", "2020-10-16 04:58:48", "2020-10-16 04:59:48"]
     assert profile_column(pd.Series(values, name="TimeStamp")).role == "datetime"
-
-
-def test_metadata_declared_type_overrides_dtype():
-    # Guideline이 categorical이라고 선언하고 검증도 통과하면, 숫자 코드여도 categorical로 쓴다.
-    series = pd.Series([1, 2, 3, 1, 2, 3] * 10, name="mold_code")
-    profile = profile_column(series, declared_type="categorical", confirmed_type="categorical")
-    assert profile.role == "categorical"
-    assert profile.role_source == "metadata"
 
 
 def test_dataset_profile_groups_columns_by_role():
@@ -106,29 +96,3 @@ def test_role_counts_separate_target_from_numeric_features():
     profile = build_dataset_profile(df, _MANIFEST, target_columns=["target"])
     roles = {c.name: c.role for c in profile.columns}
     assert roles == {"a": "numeric", "b": "numeric", "target": "target"}
-
-
-def test_metadata_validation_reports_mismatch_without_fixing():
-    df = pd.DataFrame({"temp": ["251", "ERROR", "250"], "code": ["A", "B", "A"]})
-    metadata = DatasetMetadata(
-        columns=[ColumnMetadata("temp", "numeric"), ColumnMetadata("missing_col", "numeric")],
-        source="json",
-    )
-    report = validate_metadata(metadata, df)
-
-    statuses = {c.name: c.status for c in report.columns}
-    assert statuses["temp"] == "type_mismatch"
-    assert statuses["missing_col"] == "missing_in_data"
-    assert statuses["code"] == "not_in_metadata"
-    # 검증은 값을 고치지 않는다
-    assert list(df["temp"]) == ["251", "ERROR", "250"]
-
-
-def test_unconfirmed_metadata_type_is_not_used_as_role():
-    df = pd.DataFrame({"temp": ["251", "ERROR", "250"] * 20})
-    metadata = DatasetMetadata(columns=[ColumnMetadata("temp", "numeric")], source="json")
-    report = validate_metadata(metadata, df)
-    profile = build_dataset_profile(df, _MANIFEST, metadata=metadata, validation=report)
-
-    # numeric 선언이 검증 실패했으므로 numeric 집합에 들어가면 안 된다
-    assert "temp" not in profile.numeric_columns

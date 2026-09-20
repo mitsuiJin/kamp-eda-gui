@@ -28,8 +28,6 @@ from reportlab.platypus import (
 from eda_report.analyses.base import AnalysisResult
 from eda_report.render.pdf import layout
 
-MAX_TABLE_ROWS = 20
-MAX_TABLE_COLS = 8
 MAX_FINDINGS_SHOWN = 8
 
 
@@ -68,10 +66,17 @@ MIN_COL_CHARS = 6
 MAX_COL_CHARS = 55
 
 
+def _cell_text(value) -> str:
+    # pandas의 astype(str)은 float 컬럼의 NaN을 문자열로 바꾸지 않고 float 그대로 남겨
+    # reportlab Paragraph에 그대로 들어가면 죽는다(결측/미계산 값을 "-"로 명시 표시).
+    if pd.isna(value):
+        return "-"
+    return str(value)
+
+
 def _table_flowable(df: pd.DataFrame, font_name: str, usable_width: float) -> Table:
-    shown = df.iloc[:MAX_TABLE_ROWS, :MAX_TABLE_COLS]
-    columns = [str(c) for c in shown.columns]
-    str_rows = shown.astype(str).values.tolist()
+    columns = [str(c) for c in df.columns]
+    str_rows = [[_cell_text(v) for v in row] for row in df.itertuples(index=False, name=None)]
 
     header_style = ParagraphStyle(
         "KoCellHeader", fontName=font_name, fontSize=7, leading=9, textColor=colors.white

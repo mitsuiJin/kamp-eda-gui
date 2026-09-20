@@ -14,13 +14,10 @@ _SEVERITY_ORDER = {"critical": 0, "warning": 1, "info": 2}
 
 _CATEGORY_BY_FLAG = {
     "excluded_column": "데이터 구조",
-    "metadata_type_mismatch": "Dataset Guidebook 검증",
-    "metadata_missing_column": "Dataset Guidebook 검증",
     "conditional_missing": "결측",
     "high_skew": "분포",
     "iqr_outlier": "이상치(통계적)",
     "iqr_not_defined": "이상치(분석 불가)",
-    "multivariate_outlier": "이상치(통계적)",
     "high_correlation": "변수 간 관계",
     "class_ratio": "target 구성",
 }
